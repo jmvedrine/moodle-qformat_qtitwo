@@ -181,34 +181,39 @@ class qformat_qtitwo extends qformat_default {
      *
      * @param array $questions the question objects
      * @param string $path the full path name to where the media files need to be copied
-     * @param int $courseid
-     * @return mixed true on success, an array of error messages otherwise
+     * @param string
+     * @return bool
      */
-    public function handle_questions_media(&$questions, $path, $courseid) {
 
-        // Todo: handle in-line media (specified in the question text).
-        return true;
+    public function copy_resources($questions, $dir) {
+        // Iterate through questions.
+        foreach ($questions as $question) {
+            $this->copy_files($question->contextid, 'question', 'questiontext', $question->id, $dir);
+            $this->copy_files($question->contextid, 'question', 'generalfeedback', $question->id, $dir);
+            if (!empty($question->options->answers)) {
+                foreach ($question->options->answers as $answer) {
+                    $this->copy_files($question->contextid, 'question', 'answer', $answer->id, $dir);
+                    $this->copy_files($question->contextid, 'question', 'answerfeedback', $answer->id, $dir);
+                }
+           }
+        }
+
     }
 
-    public function handle_question_files(&$question) {
+    public function copy_files($contextid, $component, $area, $questionid, $dir) {
+        global $CFG;
+
         $fs = get_file_storage();
-        $contextid = $question->contextid;
-        // Get files used by the questiontext.
-        $question->questiontextfiles = $fs->get_area_files(
-                $contextid, 'question', 'questiontext', $question->id);
-        // Get files used by the generalfeedback.
-        $question->generalfeedbackfiles = $fs->get_area_files(
-                $contextid, 'question', 'generalfeedback', $question->id);
-        if (!empty($question->options->answers)) {
-            foreach ($question->options->answers as $answer) {
-                $answer->answerfiles = $fs->get_area_files(
-                        $contextid, 'question', 'answer', $answer->id);
-                $answer->feedbackfiles = $fs->get_area_files(
-                        $contextid, 'question', 'answerfeedback', $answer->id);
+        $files = $fs->get_area_files($contextid, $component, $area, $questionid);
+        foreach ($files as $file) {
+            if ($file->is_directory()) {
+                continue;
             }
+            $destination = $dir . '/resources/' . $questionid . '/'. $component . '/' . $area;
+            make_temp_directory($destination);
+            $file->copy_content_to($CFG->tempdir . '/' . $dir . '/resources/' . $questionid . '/'. $component . '/' . $area . '/' . $file->get_filename());
         }
     }
-
 
     /**
      * exports the questions in a question category to the given location
@@ -219,7 +224,7 @@ class qformat_qtitwo extends qformat_default {
      * @return bool - or errors out
      */
     public function exportprocess() {
-        global $CFG, $OUTPUT, $USER;
+        global $CFG, $OUTPUT, $USER, $DB;
 
         $courseid = $this->course->id;
         // Continue path for following error checks.
@@ -227,8 +232,8 @@ class qformat_qtitwo extends qformat_default {
 
         // Create a temporary directory for the exports (if not already existing).
         $uniquecode = time();
-        $path = 'qformat_qtitwo/' . $USER->id . '/' . $uniquecode;
-        if (!$this->tempdir = make_temp_directory($path)) {
+        $this->tempdir = 'qformat_qtitwo/' . $USER->id . '/' . $uniquecode;
+        if (!$path = make_temp_directory($this->tempdir)) {
             throw new moodle_exception('cannotcreatepath', 'question', '', $path);
             print_error('cannotcreatepath', 'quiz', '', $continuepath);
         }
@@ -241,11 +246,6 @@ class qformat_qtitwo extends qformat_default {
         // Create the imsmanifest file.
         $smarty =& $this->init_smarty();
         $this->add_qti_info($questions);
-        // Copy files used by the main questions to the export directory.
-/*        $result = $this->handle_questions_media($questions, $this->tempdir, $courseid);
-        if ($result !== true) {
-            echo $OUTPUT->notification(implode("<br />", $result));
-        }*/
 
         $manifestquestions = $this->objects_to_array($questions);
         $manifestid = str_replace(array(':', '/'), array('-', '_'), "question_category_{$this->category->id}---{$CFG->wwwroot}");
@@ -257,7 +257,7 @@ class qformat_qtitwo extends qformat_default {
         $smarty->assign('lang', $this->lang);
         $smarty->error_reporting = 99;
         $expout = $smarty->fetch('imsmanifest.tpl');
-        $filepath = $this->tempdir . '/imsmanifest.xml';
+        $filepath = $path . '/imsmanifest.xml';
         if (empty($expout)) {
             print_error('emptyxml', 'question', $continuepath);
         }
@@ -280,12 +280,18 @@ class qformat_qtitwo extends qformat_default {
             if ($question->qtype == 'random') {
                 continue;
             }
+
+            // used by file api
+            $contextid = $DB->get_field('question_categories', 'contextid',
+                    array('id' => $question->category));
+            $question->contextid = $contextid;
+
             // Results are first written into string (and then to a file).
             $count++;
-            $expout = $this->writequestion($question , null, true, $this->tempdir) . "\n";
+            $expout = $this->writequestion($question , null, true, $path) . "\n";
             $expout = $this->presave_process($expout );
 
-            $filepath = $this->tempdir.'/'.$this->get_assesment_item_id($question) . ".xml";
+            $filepath = $path.'/'.$this->get_assesment_item_id($question) . ".xml";
             if (!$fh = fopen($filepath, "w")) {
                 print_error('cannotopenforwriting', 'question', '', $continuepath);
             }
@@ -296,23 +302,26 @@ class qformat_qtitwo extends qformat_default {
 
         }
 
+        $this->copy_resources($questions, $this->tempdir);
+
         // Get the list of files in directory.
-        $filestemp = get_directory_list($this->tempdir, '', false, true, true);
+        $filestemp = get_directory_list($path, '', false, true, true);
         $files = array();
         foreach ($filestemp as $file) {
             // Add zip paths and fs paths to all them.
-            $files[$file] = $this->tempdir . '/' . $file;
+            $files[$file] = $path . '/' . $file;
         }
         // Get the zip packer.
         $zippacker = get_file_packer('application/zip');
 
         // Zip files.
-        $zipfile = $this->tempdir . ' /qti2.zip';
+        $zipfile = $path . ' /qti2.zip';
         $zippacker->archive_to_pathname($files, $zipfile);
 
         $zipcontent = file_get_contents($zipfile);
+
         // Remove the temporary directory.
-//        fulldelete($this->tempdir);
+        fulldelete($path);
 
         return $zipcontent;
     }
