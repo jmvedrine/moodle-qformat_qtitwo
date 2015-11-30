@@ -195,7 +195,28 @@ class qformat_qtitwo extends qformat_default {
                     $this->copy_files($question->contextid, 'question', 'answer', $answer->id, $dir);
                     $this->copy_files($question->contextid, 'question', 'answerfeedback', $answer->id, $dir);
                 }
-           }
+            }
+            if (!empty($question->hints)) {
+                foreach ($question->hints as $hint) {
+                    $this->copy_files($question->contextid, 'question', 'hint', $hint->id, $dir);
+                }
+            }
+            // The rest of the files to copy depends on question type.
+            switch($question->qtype) {
+                case 'numerical':
+                    $this->copy_files($question->contextid, 'question', 'instruction', $question->id, $dir);
+                    break;
+                case 'match':
+                    if (!empty($question->options->subquestions)) {
+                        foreach ($question->options->subquestions as $subquestion) {
+                            $this->copy_files($question->contextid, 'qtype_match', 'subquestion', $subquestion->id, $dir);
+                        }
+                    }
+                    break;
+                case 'essay':
+                    $this->copy_files($question->contextid, 'qtype_essay', 'graderinfo', $question->id, $dir);
+                    break;
+            }
         }
 
     }
@@ -203,15 +224,20 @@ class qformat_qtitwo extends qformat_default {
     public function copy_files($contextid, $component, $area, $questionid, $dir) {
         global $CFG;
 
+        $directorycreated = false;
+        $destination = $dir . '/resources/' . $questionid . '/'. $component . '/' . $area;
+        
         $fs = get_file_storage();
         $files = $fs->get_area_files($contextid, $component, $area, $questionid);
         foreach ($files as $file) {
             if ($file->is_directory()) {
                 continue;
             }
-            $destination = $dir . '/resources/' . $questionid . '/'. $component . '/' . $area;
-            make_temp_directory($destination);
-            $file->copy_content_to($CFG->tempdir . '/' . $dir . '/resources/' . $questionid . '/'. $component . '/' . $area . '/' . $file->get_filename());
+            if (!$directorycreated) {      
+                make_temp_directory($destination);
+                $directorycreated = true;
+            }
+            $file->copy_content_to($CFG->tempdir . '/' . $destination . '/' . $file->get_filename());
         }
     }
 
@@ -492,6 +518,12 @@ class qformat_qtitwo extends qformat_default {
         // Question reflects database fields for general question and specific to type.
         global $CFG;
         $expout = '';
+        $question->questiontext = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/questiontext', $question->questiontext);
+
+        if(isset($question->generalfeedback)){
+            $question->generalfeedback = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/generalfeedback', $question->generalfeedback);
+        }
+ 
         // Need to unencode the html entities in the questiontext field.
         // The whole question object was earlier run throught htmlspecialchars in xml_entitize().
         $question->questiontext = html_entity_decode($question->questiontext, ENT_COMPAT);
