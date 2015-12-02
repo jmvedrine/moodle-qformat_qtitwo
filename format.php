@@ -139,43 +139,27 @@ class qformat_qtitwo extends qformat_default {
 
     public function export_file_extension() {
         // Override default type so extension is .zip.
-
         return ".zip";
     }
 
-    public function writetext( $raw ) {
-        // Generates <text></text> tags, processing raw text therein.
-
-        // For now, don't allow any additional tags in text
-        // otherwise xml rules would probably get broken.
-        $raw = strip_tags( $raw );
-
-        return "<text>$raw</text>\n";
-    }
-
-
     /**
-     * Flattens $object['media'], copies $object['media'] to $path, and sets $object['mediamimetype']
-     *
-     * @param array &$object containing a field 'media'
-     * @param string $path the full path name to where the media files need to be copied
-     * @param int $courseid
-     * @return: mixed - true on success or in case of an empty media field, an error string if the file copy fails
+     * Take a string, and wrap it in a CDATA section, if that is required to make
+     * the output XML valid (copied from qformat_xml).
+     * @param string $string a string
+     * @return string the string, wrapped in CDATA if necessary.
      */
-    public function copy_and_flatten(&$object, $path, $courseid) {
-        global $CFG;
-        if (!empty($object['media'])) {
-            $location = $object['media'];
-            $object['media'] = $this->flatten_image_name($location);
-            if (!@copy("{$CFG->dataroot}/$courseid/$location", "$path/{$object['media']}")) {
-                return "Failed to copy {$CFG->dataroot}/$courseid/$location to $path/{$object['media']}";
-            }
-            if (empty($object['mediamimetype'])) {
-                $object['mediamimetype'] = mimeinfo('type', $object['media']);
-            }
+    public function xml_escape($string) {
+        if (!empty($string) && htmlspecialchars($string) != $string) {
+            // If the string contains something that looks like the end
+            // of a CDATA section, then we need to avoid errors by splitting
+            // the string between two CDATA sections.
+            $string = str_replace(']]>', ']]]]><![CDATA[>', $string);
+            return "<![CDATA[{$string}]]>";
+        } else {
+            return $string;
         }
-        return true;
     }
+
     /**
      * Copies all files needed by the questions to the given $path, and flattens the file names
      *
@@ -188,52 +172,51 @@ class qformat_qtitwo extends qformat_default {
     public function copy_resources($questions, $dir) {
         // Iterate through questions.
         foreach ($questions as $question) {
-            $this->copy_files($question->contextid, 'question', 'questiontext', $question->id, $dir);
-            $this->copy_files($question->contextid, 'question', 'generalfeedback', $question->id, $dir);
+            $this->copy_files($question->contextid, 'question', 'questiontext', $question->id, $question->id, $dir);
+            $this->copy_files($question->contextid, 'question', 'generalfeedback', $question->id, $question->id, $dir);
             if (!empty($question->options->answers)) {
                 foreach ($question->options->answers as $answer) {
-                    $this->copy_files($question->contextid, 'question', 'answer', $answer->id, $dir);
-                    $this->copy_files($question->contextid, 'question', 'answerfeedback', $answer->id, $dir);
+                    $this->copy_files($question->contextid, 'question', 'answer', $question->id, $answer->id, $dir);
+                    $this->copy_files($question->contextid, 'question', 'answerfeedback', $question->id, $answer->id, $dir);
                 }
             }
             if (!empty($question->hints)) {
                 foreach ($question->hints as $hint) {
-                    $this->copy_files($question->contextid, 'question', 'hint', $hint->id, $dir);
+                    $this->copy_files($question->contextid, 'question', 'hint', $question->id, $hint->id, $dir);
                 }
             }
             // The rest of the files to copy depends on question type.
             switch($question->qtype) {
                 case 'numerical':
-                    $this->copy_files($question->contextid, 'question', 'instruction', $question->id, $dir);
+                    $this->copy_files($question->contextid, 'question', 'instruction', $question->id, $question->id, $dir);
                     break;
                 case 'match':
                     if (!empty($question->options->subquestions)) {
                         foreach ($question->options->subquestions as $subquestion) {
-                            $this->copy_files($question->contextid, 'qtype_match', 'subquestion', $subquestion->id, $dir);
+                            $this->copy_files($question->contextid, 'qtype_match', 'subquestion', $question->id, $subquestion->id, $dir);
                         }
                     }
                     break;
                 case 'essay':
-                    $this->copy_files($question->contextid, 'qtype_essay', 'graderinfo', $question->id, $dir);
+                    $this->copy_files($question->contextid, 'qtype_essay', 'graderinfo', $question->id, $question->id, $dir);
                     break;
             }
         }
 
     }
 
-    public function copy_files($contextid, $component, $area, $questionid, $dir) {
+    public function copy_files($contextid, $component, $area, $questionid, $itemid, $dir) {
         global $CFG;
 
-        $directorycreated = false;
-        $destination = $dir . '/resources/' . $questionid . '/'. $component . '/' . $area;
-        
+        $destination = $dir . '/resources/' . $questionid . '/'. $component . '/' . $area . '/' . $itemid;
+
         $fs = get_file_storage();
-        $files = $fs->get_area_files($contextid, $component, $area, $questionid);
+        $files = $fs->get_area_files($contextid, $component, $area, $itemid);
         foreach ($files as $file) {
             if ($file->is_directory()) {
                 continue;
             }
-            if (!$directorycreated) {      
+            if (!$directorycreated) {
                 make_temp_directory($destination);
                 $directorycreated = true;
             }
@@ -518,12 +501,23 @@ class qformat_qtitwo extends qformat_default {
         // Question reflects database fields for general question and specific to type.
         global $CFG;
         $expout = '';
-        $question->questiontext = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/questiontext', $question->questiontext);
+        $question->questiontext = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/questiontext/' . $question->id , $question->questiontext);
 
         if(isset($question->generalfeedback)){
-            $question->generalfeedback = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/generalfeedback', $question->generalfeedback);
+            $question->generalfeedback = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/generalfeedback/' . $question->id , $question->generalfeedback);
         }
- 
+        if (!empty($question->options->answers)) {
+            foreach ($question->options->answers as $key => $answer) {
+                $question->options->answers[$key]->answer = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/answer/' . $answer->id, $answer->answer);
+                $question->options->answers[$key]->feedback = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/answerfeedback/' . $answer->id, $answer->feedback);
+            }
+        }
+        if (!empty($question->hints)) {
+            foreach ($question->hints as $key => $hint) {
+                $question->hints[$key]->hint = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/hint/' . $hint->id, $hint->hint);
+            }
+        }
+
         // Need to unencode the html entities in the questiontext field.
         // The whole question object was earlier run throught htmlspecialchars in xml_entitize().
         $question->questiontext = html_entity_decode($question->questiontext, ENT_COMPAT);
@@ -610,6 +604,7 @@ class qformat_qtitwo extends qformat_default {
                 $expout = $smarty->fetch('textEntry.tpl');
                 break;
             case 'numerical':
+                $question->instruction = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/question/instruction/' . $question->id , $question->instruction);
                 $qanswer = array_pop( $question->options->answers );
                 $smarty->assign('lowerbound', $qanswer->answer - $qanswer->tolerance);
                 $smarty->assign('upperbound', $qanswer->answer + $qanswer->tolerance);
@@ -617,6 +612,11 @@ class qformat_qtitwo extends qformat_default {
                 $expout = $smarty->fetch('numerical.tpl');
                 break;
             case 'match':
+                if (!empty($question->options->subquestions)) {
+                    foreach ($question->options->subquestions as $key => $subquestion) {
+                        $question->options->subquestions[$key]->questiontext = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/qtype_match/subquestion/' . $subquestion->id, $subquestion->questiontext);
+                    }
+                }
                 $this->xml_entitize($question->options->subquestions);
                 $subquestions = $this->objects_to_array($question->options->subquestions);
                 if (!empty($shuffleanswers)) {
