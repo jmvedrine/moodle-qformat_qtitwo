@@ -278,6 +278,8 @@ class qformat_qtitwo extends qformat_default {
         }
         fclose($fh);
 
+        $this->xml_entitize($questions);
+
         // Iterate through questions.
         foreach ($questions as $question) {
             // Do not export hidden questions.
@@ -297,6 +299,7 @@ class qformat_qtitwo extends qformat_default {
 
             // Results are first written into string (and then to a file).
             $count++;
+
             $expout = $this->writequestion($question , null, true, $path) . "\n";
             $expout = $this->presave_process($expout );
 
@@ -518,10 +521,6 @@ class qformat_qtitwo extends qformat_default {
             }
         }
 
-        // Need to unencode the html entities in the questiontext field.
-        // The whole question object was earlier run throught htmlspecialchars in xml_entitize().
-        $question->questiontext = html_entity_decode($question->questiontext, ENT_COMPAT);
-
         $hassize = empty($question->mediax) ? 0 : 1;
 
         // All other tags will be stripped from question text.
@@ -534,12 +533,13 @@ class qformat_qtitwo extends qformat_default {
         $smarty->assign('assessmentitemidentifier', $assesmentitemid);
         $smarty->assign('assessmentitemtitle', $question->name);
         $smarty->assign('courselevelexport', $courselevel);
+        $smarty->assign('defaultmark', $question->defaultmark);
 
         if ($question->qtype == 'multianswer') {
             $question->questiontext = strip_tags($question->questiontext, $allowedtags . '<intro>');
             $smarty->assign('questionText',  $this->get_cloze_intro($question->questiontext));
         } else {
-            $smarty->assign('questionText',  strip_tags($question->questiontext, $allowedtags));
+            $smarty->assign('questionText',  $question->questiontext);
         }
 
         $smarty->assign('question', $question);
@@ -581,8 +581,7 @@ class qformat_qtitwo extends qformat_default {
                 $smarty->assign('correctresponses', $correctresponses);
                 $smarty->assign('answers', $answers);
                 $smarty->assign('maxChoices', $question->options->single ? '1' : count($answers));
-                $smarty->assign('maxChoices', $question->options->single ? '1' : count($answers));
-                $smarty->assign('shuffle', empty($shuffleanswers) ? 'false' : 'true');
+                $smarty->assign('shuffle', $question->options->shuffleanswers ? 'true' : 'false');
                 $smarty->assign('generalfeedback', $question->generalfeedback);
                 $smarty->assign('correctfeedback', $question->options->correctfeedback);
                 $smarty->assign('partiallycorrectfeedback', $question->options->partiallycorrectfeedback);
@@ -601,6 +600,7 @@ class qformat_qtitwo extends qformat_default {
                 $smarty->assign('responsedeclarationcardinality', $correctcount > 1 ? 'multiple' : 'single');
                 $smarty->assign('correctresponses', $correctresponses);
                 $smarty->assign('answers', $answers);
+                $smarty->assign('usecase', $question->options->usecase ? 'true' : 'false');
                 $expout = $smarty->fetch('textEntry.tpl');
                 break;
             case 'numerical':
@@ -617,7 +617,6 @@ class qformat_qtitwo extends qformat_default {
                         $question->options->subquestions[$key]->questiontext = str_replace('@@PLUGINFILE@@', 'resources/' . $question->id . '/qtype_match/subquestion/' . $subquestion->id, $subquestion->questiontext);
                     }
                 }
-                $this->xml_entitize($question->options->subquestions);
                 $subquestions = $this->objects_to_array($question->options->subquestions);
                 if (!empty($shuffleanswers)) {
                     $subquestions = $this->shuffle_things($subquestions);
@@ -626,10 +625,14 @@ class qformat_qtitwo extends qformat_default {
 
                 $smarty->assign('setcount', $setcount);
                 $smarty->assign('matchsets', $subquestions);
+                $smarty->assign('shuffle', $question->options->shuffleanswers ? 'true' : 'false');
                 $expout = $smarty->fetch('match.tpl');
                 break;
             case 'description':
                 $expout = $smarty->fetch('extendedText.tpl');
+                break;
+            case 'essay':
+                $expout = $smarty->fetch('extendedText_simpleEssay.tpl');
                 break;
             // Loss of get_answers() from quiz_embedded_close_qtype class during
             // Gustav's refactor breaks multianswer export code badly - one for another day!!
@@ -696,7 +699,7 @@ class qformat_qtitwo extends qformat_default {
             }
         }
         $smarty = new Smarty;
-        $smarty->template_dir = "{$CFG->dirroot}/question/format/qtitwo/templates";
+        $smarty->template_dir = "{$CFG->dirroot}/question/format/qtitwo/templates/claroline";
         $smarty->compile_dir  = "$path";
         return $smarty;
     }
@@ -903,18 +906,6 @@ class qformat_qtitwo extends qformat_default {
             $things[] = $value;      // This loses the index key, but doesn't matter.
         }
         return $things;
-    }
-
-    /**
-     * returns a flattened image name - with all /, \ and : replaced with other characters
-     *
-     * used to convert a file or url to a qti-permissable identifier
-     *
-     * @param string name
-     * @return string
-     */
-    public function flatten_image_name($name) {
-        return str_replace(array('/', '\\', ':'), array ('_', '-', '.'), $name);
     }
 
 }
