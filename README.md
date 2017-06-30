@@ -1,3 +1,9 @@
+NOTE : I am now retired and I stopped all Moodle programming work. So this has not been tested with recent Moodle versions.
+
+This is no more maintained and I can give no support.
+Use at your own risks.
+Sorry.
+
 moodle-qformat_qtitwo
 ========================
 
@@ -5,7 +11,7 @@ IMS QTI 2.0 Moodle export format
 This plugin allow export of questions using the IMS QTI 2.0 standard.
 
 Written by Brian King (brian@mediagonal.ch)
-Upgraded for Moodle 2.9, 3.0 by Jean-Michel Védrine (vedrine@vedrine.net)
+Upgraded for Moodle 2.9, 3.0 by Jean-Michel VÃ©drine (vedrine@vedrine.net)
 
 
 KNOWN LIMITATIONS
