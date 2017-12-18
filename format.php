@@ -127,7 +127,7 @@ class qformat_qtitwo extends qformat_default {
     public function exportpreprocess() {
         global $CFG;
 
-        require_once("/smarty2/libs/Smarty.class.php");
+        require_once($CFG->dirroot. "/question/format/qtitwo/smarty2/libs/Smarty.class.php");
 
         // Assign the language for the export: by parameter, SESSION, USER, or the default of 'en'.
         $lang = current_language();
@@ -209,7 +209,7 @@ class qformat_qtitwo extends qformat_default {
         global $CFG;
 
         $destination = $dir . '/resources/' . $questionid . '/'. $component . '/' . $area . '/' . $itemid;
-
+        $directorycreated = false;
         $fs = get_file_storage();
         $files = $fs->get_area_files($contextid, $component, $area, $itemid);
         foreach ($files as $file) {
@@ -327,7 +327,7 @@ class qformat_qtitwo extends qformat_default {
         $zippacker = get_file_packer('application/zip');
 
         // Zip files.
-        $zipfile = $path . ' /qti2.zip';
+        $zipfile = $path . '/qti2.zip';
         $zippacker->archive_to_pathname($files, $zipfile);
 
         $zipcontent = file_get_contents($zipfile);
