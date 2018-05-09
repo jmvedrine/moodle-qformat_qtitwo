@@ -24,3 +24,4 @@
 
 $string['pluginname'] = 'IMS QTI 2.0 format';
 $string['pluginname_help'] = 'This format enables questions to be exported in the standard IMS QTI format (version 2.0) via a zip file.';
+$string['privacy:metadata'] = 'The IMS QTI 2.0 question format plugin does not store any personal data.';
